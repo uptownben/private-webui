@@ -17,6 +17,8 @@
 	import Knowledge from '$lib/components/workspace/Models/Knowledge.svelte';
 	import ToolsSelector from '$lib/components/workspace/Models/ToolsSelector.svelte';
 	import FiltersSelector from '$lib/components/workspace/Models/FiltersSelector.svelte';
+	import ActionsSelector from '$lib/components/workspace/Models/ActionsSelector.svelte';
+	import Capabilities from '$lib/components/workspace/Models/Capabilities.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -46,7 +48,7 @@
 		base_model_id: null,
 		name: '',
 		meta: {
-			profile_image_url: '/favicon.png',
+			profile_image_url: '/static/favicon.png',
 			description: '',
 			suggestion_prompts: null,
 			tags: []
@@ -64,6 +66,7 @@
 	let knowledge = [];
 	let toolIds = [];
 	let filterIds = [];
+	let actionIds = [];
 
 	const updateHandler = async () => {
 		loading = true;
@@ -93,6 +96,14 @@
 		} else {
 			if (info.meta.filterIds) {
 				delete info.meta.filterIds;
+			}
+		}
+
+		if (actionIds.length > 0) {
+			info.meta.actionIds = actionIds;
+		} else {
+			if (info.meta.actionIds) {
+				delete info.meta.actionIds;
 			}
 		}
 
@@ -133,7 +144,7 @@
 								: {
 										id: model.id,
 										name: model.name
-								  }
+									}
 						)
 					)
 				};
@@ -144,9 +155,9 @@
 
 				params = { ...params, ...model?.info?.params };
 				params.stop = params?.stop
-					? (typeof params.stop === 'string' ? params.stop.split(',') : params?.stop ?? []).join(
+					? (typeof params.stop === 'string' ? params.stop.split(',') : (params?.stop ?? [])).join(
 							','
-					  )
+						)
 					: null;
 
 				if (model?.info?.meta?.knowledge) {
@@ -159,6 +170,10 @@
 
 				if (model?.info?.meta?.filterIds) {
 					filterIds = [...model?.info?.meta?.filterIds];
+				}
+
+				if (model?.info?.meta?.actionIds) {
+					actionIds = [...model?.info?.meta?.actionIds];
 				}
 
 				if (model?.owned_by === 'openai') {
@@ -223,7 +238,7 @@
 					ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
 
 					// Get the base64 representation of the compressed image
-					const compressedSrc = canvas.toDataURL('image/jpeg');
+					const compressedSrc = canvas.toDataURL();
 
 					// Display the compressed image
 					info.meta.profile_image_url = compressedSrc;
@@ -235,7 +250,9 @@
 			if (
 				inputFiles &&
 				inputFiles.length > 0 &&
-				['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(inputFiles[0]['type'])
+				['image/gif', 'image/webp', 'image/jpeg', 'image/png', 'image/svg+xml'].includes(
+					inputFiles[0]['type']
+				)
 			) {
 				reader.readAsDataURL(inputFiles[0]);
 			} else {
@@ -280,7 +297,7 @@
 					<button
 						class=" {info.meta.profile_image_url
 							? ''
-							: 'p-4'} rounded-full dark:bg-gray-700 border border-dashed border-gray-200 flex items-center"
+							: 'p-4'} rounded-full border border-dashed border-gray-200 flex items-center"
 						type="button"
 						on:click={() => {
 							filesInputElement.click();
@@ -459,14 +476,14 @@
 							class="p-1 text-xs flex rounded transition"
 							type="button"
 							on:click={() => {
-								if (info.meta.suggestion_prompts === null) {
+								if ((info?.meta?.suggestion_prompts ?? null) === null) {
 									info.meta.suggestion_prompts = [{ content: '' }];
 								} else {
 									info.meta.suggestion_prompts = null;
 								}
 							}}
 						>
-							{#if info.meta.suggestion_prompts === null}
+							{#if (info?.meta?.suggestion_prompts ?? null) === null}
 								<span class="ml-2 self-center">{$i18n.t('Default')}</span>
 							{:else}
 								<span class="ml-2 self-center">{$i18n.t('Custom')}</span>
@@ -474,7 +491,7 @@
 						</button>
 					</div>
 
-					{#if info.meta.suggestion_prompts !== null}
+					{#if (info?.meta?.suggestion_prompts ?? null) !== null}
 						<button
 							class="p-1 px-2 text-xs flex rounded transition"
 							type="button"
@@ -501,7 +518,7 @@
 					{/if}
 				</div>
 
-				{#if info.meta.suggestion_prompts}
+				{#if info?.meta?.suggestion_prompts}
 					<div class="flex flex-col space-y-1 mt-2">
 						{#if info.meta.suggestion_prompts.length > 0}
 							{#each info.meta.suggestion_prompts as prompt, promptIdx}
@@ -556,25 +573,14 @@
 			</div>
 
 			<div class="my-2">
-				<div class="flex w-full justify-between mb-1">
-					<div class=" self-center text-sm font-semibold">{$i18n.t('Capabilities')}</div>
-				</div>
-				<div class="flex flex-col">
-					{#each Object.keys(capabilities) as capability}
-						<div class=" flex items-center gap-2">
-							<Checkbox
-								state={capabilities[capability] ? 'checked' : 'unchecked'}
-								on:change={(e) => {
-									capabilities[capability] = e.detail === 'checked';
-								}}
-							/>
+				<ActionsSelector
+					bind:selectedActionIds={actionIds}
+					actions={$functions.filter((func) => func.type === 'action')}
+				/>
+			</div>
 
-							<div class=" py-0.5 text-sm w-full capitalize">
-								{$i18n.t(capability)}
-							</div>
-						</div>
-					{/each}
-				</div>
+			<div class="my-2">
+				<Capabilities bind:capabilities />
 			</div>
 
 			<div class="my-1">

@@ -19,6 +19,7 @@
 		'serpstack',
 		'serper',
 		'serply',
+		'searchapi',
 		'duckduckgo',
 		'tavily',
 		'jina'
@@ -101,7 +102,7 @@
 								<div class="flex w-full">
 									<div class="flex-1">
 										<input
-											class="w-full rounded-lg py-2 px-4 text-sm dark:text-gray-300 dark:bg-gray-850 outline-none"
+											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
 											type="text"
 											placeholder={$i18n.t('Enter Searxng Query URL')}
 											bind:value={webConfig.search.searxng_query_url}
@@ -129,7 +130,7 @@
 								<div class="flex w-full">
 									<div class="flex-1">
 										<input
-											class="w-full rounded-lg py-2 px-4 text-sm dark:text-gray-300 dark:bg-gray-850 outline-none"
+											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
 											type="text"
 											placeholder={$i18n.t('Enter Google PSE Engine Id')}
 											bind:value={webConfig.search.google_pse_engine_id}
@@ -182,6 +183,34 @@
 									bind:value={webConfig.search.serply_api_key}
 								/>
 							</div>
+						{:else if webConfig.search.engine === 'searchapi'}
+							<div>
+								<div class=" self-center text-xs font-medium mb-1">
+									{$i18n.t('SearchApi API Key')}
+								</div>
+
+								<SensitiveInput
+									placeholder={$i18n.t('Enter SearchApi API Key')}
+									bind:value={webConfig.search.searchapi_api_key}
+								/>
+							</div>
+							<div class="mt-1.5">
+								<div class=" self-center text-xs font-medium mb-1">
+									{$i18n.t('SearchApi Engine')}
+								</div>
+
+								<div class="flex w-full">
+									<div class="flex-1">
+										<input
+											class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
+											type="text"
+											placeholder={$i18n.t('Enter SearchApi Engine')}
+											bind:value={webConfig.search.searchapi_engine}
+											autocomplete="off"
+										/>
+									</div>
+								</div>
+							</div>
 						{:else if webConfig.search.engine === 'tavily'}
 							<div>
 								<div class=" self-center text-xs font-medium mb-1">
@@ -205,7 +234,7 @@
 							</div>
 
 							<input
-								class="w-full rounded-lg py-2 px-4 text-sm dark:text-gray-300 dark:bg-gray-850 outline-none"
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
 								placeholder={$i18n.t('Search Result Count')}
 								bind:value={webConfig.search.result_count}
 								required
@@ -218,7 +247,7 @@
 							</div>
 
 							<input
-								class="w-full rounded-lg py-2 px-4 text-sm dark:text-gray-300 dark:bg-gray-850 outline-none"
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
 								placeholder={$i18n.t('Concurrent Requests')}
 								bind:value={webConfig.search.concurrent_requests}
 								required
@@ -267,7 +296,7 @@
 						<div class=" w-20 text-xs font-medium self-center">{$i18n.t('Language')}</div>
 						<div class=" flex-1 self-center">
 							<input
-								class="w-full rounded-lg py-2 px-4 text-sm dark:text-gray-300 dark:bg-gray-850 outline-none"
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none"
 								type="text"
 								placeholder={$i18n.t('Enter language codes')}
 								bind:value={youtubeLanguage}

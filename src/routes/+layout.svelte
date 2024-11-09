@@ -31,13 +31,58 @@
 
 	import { WEBUI_BASE_URL, WEBUI_HOSTNAME } from '$lib/constants';
 	import i18n, { initI18n, getLanguages } from '$lib/i18n';
+	import { bestMatchingLanguage } from '$lib/utils';
 
 	setContext('i18n', i18n);
 
 	let loaded = false;
 	const BREAKPOINT = 768;
 
-	let wakeLock = null;
+	const setupSocket = () => {
+		const _socket = io(`${WEBUI_BASE_URL}` || undefined, {
+			reconnection: true,
+			reconnectionDelay: 1000,
+			reconnectionDelayMax: 5000,
+			randomizationFactor: 0.5,
+			path: '/ws/socket.io',
+			auth: { token: localStorage.token }
+		});
+
+		socket.set(_socket);
+
+		_socket.on('connect_error', (err) => {
+			console.log('connect_error', err);
+		});
+
+		_socket.on('connect', () => {
+			console.log('connected', _socket.id);
+		});
+
+		_socket.on('reconnect_attempt', (attempt) => {
+			console.log('reconnect_attempt', attempt);
+		});
+
+		_socket.on('reconnect_failed', () => {
+			console.log('reconnect_failed');
+		});
+
+		_socket.on('disconnect', (reason, details) => {
+			console.log(`Socket ${_socket.id} disconnected due to ${reason}`);
+			if (details) {
+				console.log('Additional details:', details);
+			}
+		});
+
+		_socket.on('user-count', (data) => {
+			console.log('user-count', data);
+			activeUserCount.set(data.count);
+		});
+
+		_socket.on('usage', (data) => {
+			console.log('usage', data);
+			USAGE_POOL.set(data['models']);
+		});
+	};
 
 	onMount(async () => {
 		theme.set(localStorage.theme);
@@ -53,34 +98,6 @@
 
 		window.addEventListener('resize', onResize);
 
-		const setWakeLock = async () => {
-			try {
-				wakeLock = await navigator.wakeLock.request('screen');
-			} catch (err) {
-				// The Wake Lock request has failed - usually system related, such as battery.
-				console.log(err);
-			}
-
-			if (wakeLock) {
-				// Add a listener to release the wake lock when the page is unloaded
-				wakeLock.addEventListener('release', () => {
-					// the wake lock has been released
-					console.log('Wake Lock released');
-				});
-			}
-		};
-
-		if ('wakeLock' in navigator) {
-			await setWakeLock();
-
-			document.addEventListener('visibilitychange', async () => {
-				// Re-request the wake lock if the document becomes visible
-				if (wakeLock !== null && document.visibilityState === 'visible') {
-					await setWakeLock();
-				}
-			});
-		}
-
 		let backendConfig = null;
 		try {
 			backendConfig = await getBackendConfig();
@@ -91,13 +108,17 @@
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
 
-		const languages = await getLanguages();
-
-		const browserLanguage = navigator.languages
-			? navigator.languages[0]
-			: navigator.language || navigator.userLanguage;
-
-		initI18n(languages.includes(browserLanguage) ? browserLanguage : backendConfig?.default_locale);
+		initI18n();
+		if (!localStorage.locale) {
+			const languages = await getLanguages();
+			const browserLanguages = navigator.languages
+				? navigator.languages
+				: [navigator.language || navigator.userLanguage];
+			const lang = backendConfig.default_locale
+				? backendConfig.default_locale
+				: bestMatchingLanguage(languages, browserLanguages, 'en-US');
+			$i18n.changeLanguage(lang);
+		}
 
 		if (backendConfig) {
 			// Save Backend Status to Store
@@ -105,26 +126,7 @@
 			await WEBUI_NAME.set(backendConfig.name);
 
 			if ($config) {
-				const _socket = io(`${WEBUI_BASE_URL}`, {
-					path: '/ws/socket.io',
-					auth: { token: localStorage.token }
-				});
-
-				_socket.on('connect', () => {
-					console.log('connected');
-				});
-
-				await socket.set(_socket);
-
-				_socket.on('user-count', (data) => {
-					console.log('user-count', data);
-					activeUserCount.set(data.count);
-				});
-
-				_socket.on('usage', (data) => {
-					console.log('usage', data);
-					USAGE_POOL.set(data['models']);
-				});
+				setupSocket();
 
 				if (localStorage.token) {
 					// Get Session User Info
@@ -136,6 +138,7 @@
 					if (sessionUser) {
 						// Save Session User to Store
 						await user.set(sessionUser);
+						await config.set(await getBackendConfig());
 					} else {
 						// Redirect Invalid Session User to /auth Page
 						localStorage.removeItem('token');

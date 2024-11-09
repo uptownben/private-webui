@@ -10,7 +10,11 @@
 		tags,
 		showSidebar,
 		mobile,
-		showArchivedChats
+		showArchivedChats,
+		pinnedChats,
+		scrollPaginationEnabled,
+		currentChatPage,
+		temporaryChatEnabled
 	} from '$lib/stores';
 	import { onMount, getContext, tick } from 'svelte';
 
@@ -33,6 +37,8 @@
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
+	import Spinner from '../common/Spinner.svelte';
+	import Loader from '../common/Loader.svelte';
 
 	const BREAKPOINT = 768;
 
@@ -46,7 +52,14 @@
 
 	let showDeleteConfirm = false;
 	let showDropdown = false;
+
+	let selectedTagName = null;
+
 	let filteredChatList = [];
+
+	// Pagination variables
+	let chatListLoading = false;
+	let allChatsLoaded = false;
 
 	$: filteredChatList = $chats.filter((chat) => {
 		if (search === '') {
@@ -68,6 +81,29 @@
 		}
 	});
 
+	const enablePagination = async () => {
+		// Reset pagination variables
+		currentChatPage.set(1);
+		allChatsLoaded = false;
+		await chats.set(await getChatList(localStorage.token, $currentChatPage));
+
+		// Enable pagination
+		scrollPaginationEnabled.set(true);
+	};
+
+	const loadMoreChats = async () => {
+		chatListLoading = true;
+
+		currentChatPage.set($currentChatPage + 1);
+		const newChatList = await getChatList(localStorage.token, $currentChatPage);
+
+		// once the bottom of the list has been reached (no results) there is no need to continue querying
+		allChatsLoaded = newChatList.length === 0;
+		await chats.set([...$chats, ...newChatList]);
+
+		chatListLoading = false;
+	};
+
 	onMount(async () => {
 		mobile.subscribe((e) => {
 			if ($showSidebar && e) {
@@ -80,7 +116,8 @@
 		});
 
 		showSidebar.set(window.innerWidth > BREAKPOINT);
-		await chats.set(await getChatList(localStorage.token));
+		await pinnedChats.set(await getChatListByTagName(localStorage.token, 'pinned'));
+		await enablePagination();
 
 		let touchstart;
 		let touchend;
@@ -181,7 +218,12 @@
 				await tick();
 				goto('/');
 			}
-			await chats.set(await getChatList(localStorage.token));
+
+			allChatsLoaded = false;
+			currentChatPage.set(1);
+			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+
+			await pinnedChats.set(await getChatListByTagName(localStorage.token, 'pinned'));
 		}
 	};
 </script>
@@ -200,7 +242,7 @@
 		deleteChatHandler(deleteChat.id);
 	}}
 >
-	<div class=" text-sm text-gray-500">
+	<div class=" text-sm text-gray-500 flex-1 line-clamp-3">
 		{$i18n.t('This will delete')} <span class="  font-semibold">{deleteChat.title}</span>.
 	</div>
 </DeleteConfirmDialog>
@@ -221,7 +263,7 @@
 	id="sidebar"
 	class="h-screen max-h-[100dvh] min-h-screen select-none {$showSidebar
 		? 'md:relative w-[260px]'
-		: '-translate-x-[260px] w-[0px]'} bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 text-sm transition fixed z-50 top-0 left-0 rounded-r-2xl
+		: '-translate-x-[260px] w-[0px]'} bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-200 text-sm transition fixed z-50 top-0 left-0
         "
 	data-state={$showSidebar}
 >
@@ -233,7 +275,7 @@
 		<div class="px-2.5 flex justify-between space-x-1 text-gray-600 dark:text-gray-400">
 			<a
 				id="sidebar-new-chat-button"
-				class="flex flex-1 justify-between rounded-xl px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-850 transition"
+				class="flex flex-1 justify-between rounded-xl px-2 h-full hover:bg-gray-100 dark:hover:bg-gray-900 transition"
 				href="/"
 				draggable="false"
 				on:click={async () => {
@@ -256,7 +298,7 @@
 						alt="logo"
 					/>
 				</div>
-				<div class=" self-center font-medium text-sm text-gray-850 dark:text-white">
+				<div class=" self-center font-medium text-sm text-gray-850 dark:text-white font-primary">
 					{$i18n.t('New Chat')}
 				</div>
 				<div class="self-center ml-auto">
@@ -277,7 +319,7 @@
 			</a>
 
 			<button
-				class=" cursor-pointer px-2 py-2 flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 transition"
+				class=" cursor-pointer px-2 py-2 flex rounded-xl hover:bg-gray-100 dark:hover:bg-gray-900 transition"
 				on:click={() => {
 					showSidebar.set(!$showSidebar);
 				}}
@@ -334,54 +376,19 @@
 					</div>
 
 					<div class="flex self-center">
-						<div class=" self-center font-medium text-sm">{$i18n.t('Workspace')}</div>
+						<div class=" self-center font-medium text-sm font-primary">{$i18n.t('Workspace')}</div>
 					</div>
 				</a>
 			</div>
 		{/if}
 
-		<div class="relative flex flex-col flex-1 overflow-y-auto">
-			{#if !($settings.saveChatHistory ?? true)}
-				<div class="absolute z-40 w-full h-full bg-gray-50/90 dark:bg-black/90 flex justify-center">
-					<div class=" text-left px-5 py-2">
-						<div class=" font-medium">{$i18n.t('Chat History is off for this browser.')}</div>
-						<div class="text-xs mt-2">
-							{$i18n.t(
-								"When history is turned off, new chats on this browser won't appear in your history on any of your devices."
-							)}
-							<span class=" font-semibold"
-								>{$i18n.t('This setting does not sync across browsers or devices.')}</span
-							>
-						</div>
-
-						<div class="mt-3">
-							<button
-								class="flex justify-center items-center space-x-1.5 px-3 py-2.5 rounded-lg text-xs bg-gray-100 hover:bg-gray-200 transition text-gray-800 font-medium w-full"
-								type="button"
-								on:click={() => {
-									saveSettings({
-										saveChatHistory: true
-									});
-								}}
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									viewBox="0 0 16 16"
-									fill="currentColor"
-									class="w-3 h-3"
-								>
-									<path
-										fill-rule="evenodd"
-										d="M8 1a.75.75 0 0 1 .75.75v6.5a.75.75 0 0 1-1.5 0v-6.5A.75.75 0 0 1 8 1ZM4.11 3.05a.75.75 0 0 1 0 1.06 5.5 5.5 0 1 0 7.78 0 .75.75 0 0 1 1.06-1.06 7 7 0 1 1-9.9 0 .75.75 0 0 1 1.06 0Z"
-										clip-rule="evenodd"
-									/>
-								</svg>
-
-								<div>{$i18n.t('Enable Chat History')}</div>
-							</button>
-						</div>
-					</div>
-				</div>
+		<div
+			class="relative flex flex-col flex-1 overflow-y-auto {$temporaryChatEnabled
+				? 'opacity-20'
+				: ''}"
+		>
+			{#if $temporaryChatEnabled}
+				<div class="absolute z-40 w-full h-full flex justify-center"></div>
 			{/if}
 
 			<div class="px-2 mt-0.5 mb-2 flex justify-center space-x-2">
@@ -405,38 +412,84 @@
 						class="w-full rounded-r-xl py-1.5 pl-2.5 pr-4 text-sm bg-transparent dark:text-gray-300 outline-none"
 						placeholder={$i18n.t('Search')}
 						bind:value={search}
-						on:focus={() => {
+						on:focus={async () => {
+							// TODO: migrate backend for more scalable search mechanism
+							scrollPaginationEnabled.set(false);
+							await chats.set(await getChatList(localStorage.token)); // when searching, load all chats
 							enrichChatsWithContent($chats);
 						}}
 					/>
 				</div>
 			</div>
 
-			{#if $tags.length > 0}
-				<div class="px-2.5 mb-2 flex gap-1 flex-wrap">
+			{#if $tags.filter((t) => t.name !== 'pinned').length > 0}
+				<div class="px-3.5 mb-1 flex gap-0.5 flex-wrap">
 					<button
-						class="px-2.5 text-xs font-medium bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 transition rounded-full"
+						class="px-2.5 py-[1px] text-xs transition {selectedTagName === null
+							? 'bg-gray-100 dark:bg-gray-900'
+							: ' '} rounded-md font-medium"
 						on:click={async () => {
-							await chats.set(await getChatList(localStorage.token));
+							selectedTagName = null;
+							await enablePagination();
 						}}
 					>
 						{$i18n.t('all')}
 					</button>
-					{#each $tags as tag}
+					{#each $tags.filter((t) => t.name !== 'pinned') as tag}
 						<button
-							class="px-2.5 text-xs font-medium bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 transition rounded-full"
+							class="px-2.5 py-[1px] text-xs transition {selectedTagName === tag.name
+								? 'bg-gray-100 dark:bg-gray-900'
+								: ''}  rounded-md font-medium"
 							on:click={async () => {
+								selectedTagName = tag.name;
+								scrollPaginationEnabled.set(false);
 								let chatIds = await getChatListByTagName(localStorage.token, tag.name);
 								if (chatIds.length === 0) {
 									await tags.set(await getAllChatTags(localStorage.token));
-									chatIds = await getChatList(localStorage.token);
+
+									// if the tag we deleted is no longer a valid tag, return to main chat list view
+									await enablePagination();
 								}
 								await chats.set(chatIds);
+
+								chatListLoading = false;
 							}}
 						>
 							{tag.name}
 						</button>
 					{/each}
+				</div>
+			{/if}
+
+			{#if $pinnedChats.length > 0}
+				<div class="pl-2 py-2 flex flex-col space-y-1">
+					<div class="">
+						<div class="w-full pl-2.5 text-xs text-gray-500 dark:text-gray-500 font-medium pb-1.5">
+							{$i18n.t('Pinned')}
+						</div>
+
+						{#each $pinnedChats as chat, idx}
+							<ChatItem
+								{chat}
+								{shiftKey}
+								selected={selectedChatId === chat.id}
+								on:select={() => {
+									selectedChatId = chat.id;
+								}}
+								on:unselect={() => {
+									selectedChatId = null;
+								}}
+								on:delete={(e) => {
+									if ((e?.detail ?? '') === 'shift') {
+										deleteChatHandler(chat.id);
+									} else {
+										deleteChat = chat;
+										showDeleteConfirm = true;
+									}
+								}}
+							/>
+						{/each}
+					</div>
 				</div>
 			{/if}
 
@@ -490,13 +543,28 @@
 						}}
 					/>
 				{/each}
+
+				{#if $scrollPaginationEnabled && !allChatsLoaded}
+					<Loader
+						on:visible={(e) => {
+							if (!chatListLoading) {
+								loadMoreChats();
+							}
+						}}
+					>
+						<div class="w-full flex justify-center py-1 text-xs animate-pulse items-center gap-2">
+							<Spinner className=" size-4" />
+							<div class=" ">Loading...</div>
+						</div>
+					</Loader>
+				{/if}
 			</div>
 		</div>
 
-		<div class="px-2.5">
+		<div class="px-2.5 pb-safe-bottom">
 			<!-- <hr class=" border-gray-900 mb-1 w-full" /> -->
 
-			<div class="flex flex-col">
+			<div class="flex flex-col font-primary">
 				{#if $user !== undefined}
 					<UserMenu
 						role={$user.role}
@@ -519,50 +587,13 @@
 									alt="User profile"
 								/>
 							</div>
-							<div class=" self-center font-semibold">{$user.name}</div>
+							<div class=" self-center font-medium">{$user.name}</div>
 						</button>
 					</UserMenu>
 				{/if}
 			</div>
 		</div>
 	</div>
-
-	<!-- <div
-		id="sidebar-handle"
-		class=" hidden md:fixed left-0 top-[50dvh] -translate-y-1/2 transition-transform translate-x-[255px] md:translate-x-[260px] rotate-0"
-	>
-		<Tooltip
-			placement="right"
-			content={`${$showSidebar ? $i18n.t('Close') : $i18n.t('Open')} ${$i18n.t('sidebar')}`}
-			touch={false}
-		>
-			<button
-				id="sidebar-toggle-button"
-				class=" group"
-				on:click={() => {
-					showSidebar.set(!$showSidebar);
-				}}
-				><span class="" data-state="closed"
-					><div
-						class="flex h-[72px] w-8 items-center justify-center opacity-50 group-hover:opacity-100 transition"
-					>
-						<div class="flex h-6 w-6 flex-col items-center">
-							<div
-								class="h-3 w-1 rounded-full bg-[#0f0f0f] dark:bg-white rotate-0 translate-y-[0.15rem] {$showSidebar
-									? 'group-hover:rotate-[15deg]'
-									: 'group-hover:rotate-[-15deg]'}"
-							/>
-							<div
-								class="h-3 w-1 rounded-full bg-[#0f0f0f] dark:bg-white rotate-0 translate-y-[-0.15rem] {$showSidebar
-									? 'group-hover:rotate-[-15deg]'
-									: 'group-hover:rotate-[15deg]'}"
-							/>
-						</div>
-					</div>
-				</span>
-			</button>
-		</Tooltip>
-	</div> -->
 </div>
 
 <style>

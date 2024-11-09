@@ -18,6 +18,8 @@
 	import { stringify } from 'postcss';
 	import { parseFile } from '$lib/utils/characters';
 	import FiltersSelector from '$lib/components/workspace/Models/FiltersSelector.svelte';
+	import ActionsSelector from '$lib/components/workspace/Models/ActionsSelector.svelte';
+	import Capabilities from '$lib/components/workspace/Models/Capabilities.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -57,12 +59,14 @@
 
 	let params = {};
 	let capabilities = {
-		vision: true
+		vision: true,
+		usage: undefined
 	};
 
 	let toolIds = [];
 	let knowledge = [];
 	let filterIds = [];
+	let actionIds = [];
 
 	$: if (name) {
 		id = name
@@ -115,6 +119,14 @@
 			}
 		}
 
+		if (actionIds.length > 0) {
+			info.meta.actionIds = actionIds;
+		} else {
+			if (info.meta.actionIds) {
+				delete info.meta.actionIds;
+			}
+		}
+
 		info.params.stop = params.stop ? params.stop.split(',').filter((s) => s.trim()) : null;
 		Object.keys(info.params).forEach((key) => {
 			if (info.params[key] === '' || info.params[key] === null) {
@@ -136,7 +148,7 @@
 				...info,
 				meta: {
 					...info.meta,
-					profile_image_url: info.meta.profile_image_url ?? '/favicon.png',
+					profile_image_url: info.meta.profile_image_url ?? '/static/favicon.png',
 					suggestion_prompts: info.meta.suggestion_prompts
 						? info.meta.suggestion_prompts.filter((prompt) => prompt.content !== '')
 						: null
@@ -185,6 +197,10 @@
 
 		if (model?.info?.meta?.filterIds) {
 			filterIds = [...model?.info?.meta?.filterIds];
+		}
+
+		if (model?.info?.meta?.actionIds) {
+			actionIds = [...model?.info?.meta?.actionIds];
 		}
 
 		info = {
@@ -295,7 +311,7 @@
 					ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
 
 					// Get the base64 representation of the compressed image
-					const compressedSrc = canvas.toDataURL('image/jpeg');
+					const compressedSrc = canvas.toDataURL();
 
 					// Display the compressed image
 					info.meta.profile_image_url = compressedSrc;
@@ -307,7 +323,9 @@
 			if (
 				inputFiles &&
 				inputFiles.length > 0 &&
-				['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(inputFiles[0]['type'])
+				['image/gif', 'image/webp', 'image/jpeg', 'image/png', 'image/svg+xml'].includes(
+					inputFiles[0]['type']
+				)
 			) {
 				reader.readAsDataURL(inputFiles[0]);
 			} else {
@@ -352,7 +370,7 @@
 				<button
 					class=" {info.meta.profile_image_url
 						? ''
-						: 'p-4'} rounded-full dark:bg-gray-700 border border-dashed border-gray-200 flex items-center"
+						: 'p-4'} rounded-full border border-dashed border-gray-200 flex items-center"
 					type="button"
 					on:click={() => {
 						filesInputElement.click();
@@ -625,26 +643,15 @@
 			/>
 		</div>
 
-		<div class="my-1">
-			<div class="flex w-full justify-between mb-1">
-				<div class=" self-center text-sm font-semibold">{$i18n.t('Capabilities')}</div>
-			</div>
-			<div class="flex flex-col">
-				{#each Object.keys(capabilities) as capability}
-					<div class=" flex items-center gap-2">
-						<Checkbox
-							state={capabilities[capability] ? 'checked' : 'unchecked'}
-							on:change={(e) => {
-								capabilities[capability] = e.detail === 'checked';
-							}}
-						/>
+		<div class="my-2">
+			<ActionsSelector
+				bind:selectedActionIds={actionIds}
+				actions={$functions.filter((func) => func.type === 'action')}
+			/>
+		</div>
 
-						<div class=" py-0.5 text-sm w-full capitalize">
-							{$i18n.t(capability)}
-						</div>
-					</div>
-				{/each}
-			</div>
+		<div class="my-1">
+			<Capabilities bind:capabilities />
 		</div>
 
 		<div class="my-1">

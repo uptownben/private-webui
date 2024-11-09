@@ -22,6 +22,7 @@
 	let responseAutoCopy = false;
 	let widescreenMode = false;
 	let splitLargeChunks = false;
+	let scrollOnBranchChange = true;
 	let userLocation = false;
 
 	// Interface
@@ -33,10 +34,23 @@
 
 	let showEmojiInCall = false;
 	let voiceInterruption = false;
+	let hapticFeedback = false;
+
+	let streamResponse = true;
 
 	const toggleSplitLargeChunks = async () => {
 		splitLargeChunks = !splitLargeChunks;
 		saveSettings({ splitLargeChunks: splitLargeChunks });
+	};
+
+	const toggleStreamResponse = async () => {
+		streamResponse = !streamResponse;
+		saveSettings({ streamResponse: streamResponse });
+	};
+
+	const togglesScrollOnBranchChange = async () => {
+		scrollOnBranchChange = !scrollOnBranchChange;
+		saveSettings({ scrollOnBranchChange: scrollOnBranchChange });
 	};
 
 	const togglewidescreenMode = async () => {
@@ -62,6 +76,11 @@
 	const toggleVoiceInterruption = async () => {
 		voiceInterruption = !voiceInterruption;
 		saveSettings({ voiceInterruption: voiceInterruption });
+	};
+
+	const toggleHapticFeedback = async () => {
+		hapticFeedback = !hapticFeedback;
+		saveSettings({ hapticFeedback: hapticFeedback });
 	};
 
 	const toggleUserLocation = async () => {
@@ -141,10 +160,17 @@
 		chatBubble = $settings.chatBubble ?? true;
 		widescreenMode = $settings.widescreenMode ?? false;
 		splitLargeChunks = $settings.splitLargeChunks ?? false;
+		scrollOnBranchChange = $settings.scrollOnBranchChange ?? true;
 		chatDirection = $settings.chatDirection ?? 'LTR';
 		userLocation = $settings.userLocation ?? false;
 
-		defaultModelId = ($settings?.models ?? ['']).at(0);
+		hapticFeedback = $settings.hapticFeedback ?? false;
+		streamResponse = $settings?.streamResponse ?? true;
+
+		defaultModelId = $settings?.models?.at(0) ?? '';
+		if ($config?.default_models) {
+			defaultModelId = $config.default_models.split(',')[0];
+		}
 
 		backgroundImageUrl = $settings.backgroundImageUrl ?? null;
 	});
@@ -296,6 +322,28 @@
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">
 					<div class=" self-center text-xs">
+						{$i18n.t('Stream Chat Response')}
+					</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							toggleStreamResponse();
+						}}
+						type="button"
+					>
+						{#if streamResponse === true}
+							<span class="ml-2 self-center">{$i18n.t('On')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">
 						{$i18n.t('Fluidly stream large external response chunks')}
 					</div>
 
@@ -307,6 +355,28 @@
 						type="button"
 					>
 						{#if splitLargeChunks === true}
+							<span class="ml-2 self-center">{$i18n.t('On')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">
+						{$i18n.t('Scroll to bottom when switching between branches')}
+					</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							togglesScrollOnBranchChange();
+						}}
+						type="button"
+					>
+						{#if scrollOnBranchChange === true}
 							<span class="ml-2 self-center">{$i18n.t('On')}</span>
 						{:else}
 							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
@@ -398,6 +468,26 @@
 						type="button"
 					>
 						{#if userLocation === true}
+							<span class="ml-2 self-center">{$i18n.t('On')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">{$i18n.t('Haptic Feedback')}</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							toggleHapticFeedback();
+						}}
+						type="button"
+					>
+						{#if hapticFeedback === true}
 							<span class="ml-2 self-center">{$i18n.t('On')}</span>
 						{:else}
 							<span class="ml-2 self-center">{$i18n.t('Off')}</span>

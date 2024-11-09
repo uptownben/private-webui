@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
-	import { onMount, tick, getContext } from 'svelte';
+	import { onMount, tick, getContext, createEventDispatcher } from 'svelte';
+	const dispatch = createEventDispatcher();
+
 	import {
 		type Model,
 		mobile,
@@ -12,16 +14,12 @@
 		tools,
 		user as _user
 	} from '$lib/stores';
-	import { blobToFile, calculateSHA256, findWordIndices } from '$lib/utils';
+	import { blobToFile, findWordIndices } from '$lib/utils';
 
-	import {
-		processDocToVectorDB,
-		uploadDocToVectorDB,
-		uploadWebToVectorDB,
-		uploadYoutubeTranscriptionToVectorDB
-	} from '$lib/apis/rag';
-
+	import { transcribeAudio } from '$lib/apis/audio';
+	import { processDocToVectorDB } from '$lib/apis/rag';
 	import { uploadFile } from '$lib/apis/files';
+
 	import {
 		SUPPORTED_FILE_TYPE,
 		SUPPORTED_FILE_EXTENSIONS,
@@ -29,17 +27,14 @@
 		WEBUI_API_BASE_URL
 	} from '$lib/constants';
 
-	import Prompts from './MessageInput/PromptCommands.svelte';
-	import Suggestions from './MessageInput/Suggestions.svelte';
-	import AddFilesPlaceholder from '../AddFilesPlaceholder.svelte';
-	import Documents from './MessageInput/Documents.svelte';
-	import Models from './MessageInput/Models.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
-	import XMark from '$lib/components/icons/XMark.svelte';
 	import InputMenu from './MessageInput/InputMenu.svelte';
 	import Headphone from '../icons/Headphone.svelte';
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
-	import { transcribeAudio } from '$lib/apis/audio';
+	import FileItem from '../common/FileItem.svelte';
+	import FilesOverlay from './MessageInput/FilesOverlay.svelte';
+	import Commands from './MessageInput/Commands.svelte';
+	import XMark from '../icons/XMark.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -48,7 +43,7 @@
 	export let submitPrompt: Function;
 	export let stopResponse: Function;
 
-	export let autoScroll = true;
+	export let autoScroll = false;
 
 	export let atSelectedModel: Model | undefined;
 	export let selectedModels: [''];
@@ -58,9 +53,7 @@
 	let chatTextAreaElement: HTMLTextAreaElement;
 	let filesInputElement;
 
-	let promptsElement;
-	let documentsElement;
-	let modelsElement;
+	let commandsElement;
 
 	let inputFiles;
 	let dragged = false;
@@ -91,13 +84,30 @@
 
 	const scrollToBottom = () => {
 		const element = document.getElementById('messages-container');
-		element.scrollTop = element.scrollHeight;
+		element.scrollTo({
+			top: element.scrollHeight,
+			behavior: 'smooth'
+		});
 	};
 
 	const uploadFileHandler = async (file) => {
 		console.log(file);
+
+		const fileItem = {
+			type: 'file',
+			file: '',
+			id: null,
+			url: '',
+			name: file.name,
+			collection_name: '',
+			status: '',
+			size: file.size,
+			error: ''
+		};
+		files = [...files, fileItem];
+
 		// Check if the file is an audio file and transcribe/convert it to text file
-		if (['audio/mpeg', 'audio/wav'].includes(file['type'])) {
+		if (['audio/mpeg', 'audio/wav', 'audio/ogg'].includes(file['type'])) {
 			const res = await transcribeAudio(localStorage.token, file).catch((error) => {
 				toast.error(error);
 				return null;
@@ -107,43 +117,42 @@
 				console.log(res);
 				const blob = new Blob([res.text], { type: 'text/plain' });
 				file = blobToFile(blob, `${file.name}.txt`);
+
+				fileItem.name = file.name;
+				fileItem.size = file.size;
 			}
 		}
 
-		// Upload the file to the server
-		const uploadedFile = await uploadFile(localStorage.token, file).catch((error) => {
-			toast.error(error);
-			return null;
-		});
+		try {
+			const uploadedFile = await uploadFile(localStorage.token, file);
 
-		if (uploadedFile) {
-			const fileItem = {
-				type: 'file',
-				file: uploadedFile,
-				id: uploadedFile.id,
-				url: `${WEBUI_API_BASE_URL}/files/${uploadedFile.id}`,
-				name: file.name,
-				collection_name: '',
-				status: 'uploaded',
-				error: ''
-			};
-			files = [...files, fileItem];
+			if (uploadedFile) {
+				fileItem.status = 'uploaded';
+				fileItem.file = uploadedFile;
+				fileItem.id = uploadedFile.id;
+				fileItem.url = `${WEBUI_API_BASE_URL}/files/${uploadedFile.id}`;
 
-			// TODO: Check if tools & functions have files support to skip this step to delegate file processing
-			// Default Upload to VectorDB
-			if (
-				SUPPORTED_FILE_TYPE.includes(file['type']) ||
-				SUPPORTED_FILE_EXTENSIONS.includes(file.name.split('.').at(-1))
-			) {
-				processFileItem(fileItem);
+				// TODO: Check if tools & functions have files support to skip this step to delegate file processing
+				// Default Upload to VectorDB
+				if (
+					SUPPORTED_FILE_TYPE.includes(file['type']) ||
+					SUPPORTED_FILE_EXTENSIONS.includes(file.name.split('.').at(-1))
+				) {
+					processFileItem(fileItem);
+				} else {
+					toast.error(
+						$i18n.t(`Unknown file type '{{file_type}}'. Proceeding with the file upload anyway.`, {
+							file_type: file['type']
+						})
+					);
+					processFileItem(fileItem);
+				}
 			} else {
-				toast.error(
-					$i18n.t(`Unknown file type '{{file_type}}'. Proceeding with the file upload anyway.`, {
-						file_type: file['type']
-					})
-				);
-				processFileItem(fileItem);
+				files = files.filter((item) => item.status !== null);
 			}
+		} catch (e) {
+			toast.error(e);
+			files = files.filter((item) => item.status !== null);
 		}
 	};
 
@@ -160,66 +169,47 @@
 			// Remove the failed doc from the files array
 			// files = files.filter((f) => f.id !== fileItem.id);
 			toast.error(e);
-
 			fileItem.status = 'processed';
 			files = files;
 		}
 	};
 
-	const uploadWeb = async (url) => {
-		console.log(url);
+	const inputFilesHandler = async (inputFiles) => {
+		inputFiles.forEach((file) => {
+			console.log(file, file.name.split('.').at(-1));
 
-		const doc = {
-			type: 'doc',
-			name: url,
-			collection_name: '',
-			status: false,
-			url: url,
-			error: ''
-		};
-
-		try {
-			files = [...files, doc];
-			const res = await uploadWebToVectorDB(localStorage.token, '', url);
-
-			if (res) {
-				doc.status = 'processed';
-				doc.collection_name = res.collection_name;
-				files = files;
+			if (
+				($config?.file?.max_size ?? null) !== null &&
+				file.size > ($config?.file?.max_size ?? 0) * 1024 * 1024
+			) {
+				toast.error(
+					$i18n.t(`File size should not exceed {{maxSize}} MB.`, {
+						maxSize: $config?.file?.max_size
+					})
+				);
+				return;
 			}
-		} catch (e) {
-			// Remove the failed doc from the files array
-			files = files.filter((f) => f.name !== url);
-			toast.error(e);
-		}
-	};
 
-	const uploadYoutubeTranscription = async (url) => {
-		console.log(url);
-
-		const doc = {
-			type: 'doc',
-			name: url,
-			collection_name: '',
-			status: false,
-			url: url,
-			error: ''
-		};
-
-		try {
-			files = [...files, doc];
-			const res = await uploadYoutubeTranscriptionToVectorDB(localStorage.token, url);
-
-			if (res) {
-				doc.status = 'processed';
-				doc.collection_name = res.collection_name;
-				files = files;
+			if (['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(file['type'])) {
+				if (visionCapableModels.length === 0) {
+					toast.error($i18n.t('Selected model(s) do not support image inputs'));
+					return;
+				}
+				let reader = new FileReader();
+				reader.onload = (event) => {
+					files = [
+						...files,
+						{
+							type: 'image',
+							url: `${event.target.result}`
+						}
+					];
+				};
+				reader.readAsDataURL(file);
+			} else {
+				uploadFileHandler(file);
 			}
-		} catch (e) {
-			// Remove the failed doc from the files array
-			files = files.filter((f) => f.name !== url);
-			toast.error(e);
-		}
+		});
 	};
 
 	onMount(() => {
@@ -249,30 +239,9 @@
 
 			if (e.dataTransfer?.files) {
 				const inputFiles = Array.from(e.dataTransfer?.files);
-
 				if (inputFiles && inputFiles.length > 0) {
-					inputFiles.forEach((file) => {
-						console.log(file, file.name.split('.').at(-1));
-						if (['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(file['type'])) {
-							if (visionCapableModels.length === 0) {
-								toast.error($i18n.t('Selected model(s) do not support image inputs'));
-								return;
-							}
-							let reader = new FileReader();
-							reader.onload = (event) => {
-								files = [
-									...files,
-									{
-										type: 'image',
-										url: `${event.target.result}`
-									}
-								];
-							};
-							reader.readAsDataURL(file);
-						} else {
-							uploadFileHandler(file);
-						}
-					});
+					console.log(inputFiles);
+					inputFilesHandler(inputFiles);
 				} else {
 					toast.error($i18n.t(`File not found.`));
 				}
@@ -297,26 +266,9 @@
 	});
 </script>
 
-{#if dragged}
-	<div
-		class="fixed {$showSidebar
-			? 'left-0 md:left-[260px] md:w-[calc(100%-260px)]'
-			: 'left-0'}  w-full h-full flex z-50 touch-none pointer-events-none"
-		id="dropzone"
-		role="region"
-		aria-label="Drag and Drop Container"
-	>
-		<div class="absolute w-full h-full backdrop-blur bg-gray-800/40 flex justify-center">
-			<div class="m-auto pt-64 flex flex-col justify-center">
-				<div class="max-w-md">
-					<AddFilesPlaceholder />
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
+<FilesOverlay show={dragged} />
 
-<div class="w-full">
+<div class="w-full font-primary">
 	<div class=" -mb-0.5 mx-auto inset-x-0 bg-transparent flex justify-center">
 		<div class="flex flex-col max-w-6xl px-2.5 md:px-6 w-full">
 			<div class="relative">
@@ -349,48 +301,9 @@
 			</div>
 
 			<div class="w-full relative">
-				{#if prompt.charAt(0) === '/'}
-					<Prompts bind:this={promptsElement} bind:prompt bind:files />
-				{:else if prompt.charAt(0) === '#'}
-					<Documents
-						bind:this={documentsElement}
-						bind:prompt
-						on:youtube={(e) => {
-							console.log(e);
-							uploadYoutubeTranscription(e.detail);
-						}}
-						on:url={(e) => {
-							console.log(e);
-							uploadWeb(e.detail);
-						}}
-						on:select={(e) => {
-							console.log(e);
-							files = [
-								...files,
-								{
-									type: e?.detail?.type ?? 'file',
-									...e.detail,
-									status: 'processed'
-								}
-							];
-						}}
-					/>
-				{/if}
-
-				<Models
-					bind:this={modelsElement}
-					bind:prompt
-					bind:chatInputPlaceholder
-					{messages}
-					on:select={(e) => {
-						atSelectedModel = e.detail;
-						chatTextAreaElement?.focus();
-					}}
-				/>
-
 				{#if atSelectedModel !== undefined}
 					<div
-						class="px-3 py-2.5 text-left w-full flex justify-between items-center absolute bottom-0 left-0 right-0 bg-gradient-to-t from-50% from-white dark:from-gray-900"
+						class="px-3 py-2.5 text-left w-full flex justify-between items-center absolute bottom-0.5 left-0 right-0 bg-gradient-to-t from-50% from-white dark:from-gray-900 z-10"
 					>
 						<div class="flex items-center gap-2 text-sm dark:text-gray-500">
 							<img
@@ -419,12 +332,27 @@
 						</div>
 					</div>
 				{/if}
+
+				<Commands
+					bind:this={commandsElement}
+					bind:prompt
+					bind:files
+					on:select={(e) => {
+						const data = e.detail;
+
+						if (data?.type === 'model') {
+							atSelectedModel = data.data;
+						}
+
+						chatTextAreaElement?.focus();
+					}}
+				/>
 			</div>
 		</div>
 	</div>
 
 	<div class="{transparentBackground ? 'bg-transparent' : 'bg-white dark:bg-gray-900'} ">
-		<div class="max-w-6xl px-2.5 md:px-6 mx-auto inset-x-0">
+		<div class="max-w-6xl px-2.5 md:px-6 mx-auto inset-x-0 pb-safe-bottom">
 			<div class=" pb-2">
 				<input
 					bind:this={filesInputElement}
@@ -435,27 +363,7 @@
 					on:change={async () => {
 						if (inputFiles && inputFiles.length > 0) {
 							const _inputFiles = Array.from(inputFiles);
-							_inputFiles.forEach((file) => {
-								if (['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(file['type'])) {
-									if (visionCapableModels.length === 0) {
-										toast.error($i18n.t('Selected model(s) do not support image inputs'));
-										return;
-									}
-									let reader = new FileReader();
-									reader.onload = (event) => {
-										files = [
-											...files,
-											{
-												type: 'image',
-												url: `${event.target.result}`
-											}
-										];
-									};
-									reader.readAsDataURL(file);
-								} else {
-									uploadFileHandler(file);
-								}
-							});
+							inputFilesHandler(_inputFiles);
 						} else {
 							toast.error($i18n.t(`File not found.`));
 						}
@@ -500,10 +408,10 @@
 							dir={$settings?.chatDirection ?? 'LTR'}
 						>
 							{#if files.length > 0}
-								<div class="mx-2 mt-2 mb-1 flex flex-wrap gap-2">
+								<div class="mx-1 mt-2.5 mb-1 flex flex-wrap gap-2">
 									{#each files as file, fileIdx}
-										<div class=" relative group">
-											{#if file.type === 'image'}
+										{#if file.type === 'image'}
+											<div class=" relative group">
 												<div class="relative">
 													<img
 														src={file.url}
@@ -534,137 +442,41 @@
 														</Tooltip>
 													{/if}
 												</div>
-											{:else if ['doc', 'file'].includes(file.type)}
-												<div
-													class="h-16 w-[15rem] flex items-center space-x-3 px-2.5 dark:bg-gray-600 rounded-xl border border-gray-200 dark:border-none"
-												>
-													<div class="p-2.5 bg-red-400 text-white rounded-lg">
-														{#if file.status === 'processed'}
-															<svg
-																xmlns="http://www.w3.org/2000/svg"
-																viewBox="0 0 24 24"
-																fill="currentColor"
-																class="w-6 h-6"
-															>
-																<path
-																	fill-rule="evenodd"
-																	d="M5.625 1.5c-1.036 0-1.875.84-1.875 1.875v17.25c0 1.035.84 1.875 1.875 1.875h12.75c1.035 0 1.875-.84 1.875-1.875V12.75A3.75 3.75 0 0 0 16.5 9h-1.875a1.875 1.875 0 0 1-1.875-1.875V5.25A3.75 3.75 0 0 0 9 1.5H5.625ZM7.5 15a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 15Zm.75 2.25a.75.75 0 0 0 0 1.5H12a.75.75 0 0 0 0-1.5H8.25Z"
-																	clip-rule="evenodd"
-																/>
-																<path
-																	d="M12.971 1.816A5.23 5.23 0 0 1 14.25 5.25v1.875c0 .207.168.375.375.375H16.5a5.23 5.23 0 0 1 3.434 1.279 9.768 9.768 0 0 0-6.963-6.963Z"
-																/>
-															</svg>
-														{:else}
-															<svg
-																class=" w-6 h-6 translate-y-[0.5px]"
-																fill="currentColor"
-																viewBox="0 0 24 24"
-																xmlns="http://www.w3.org/2000/svg"
-																><style>
-																	.spinner_qM83 {
-																		animation: spinner_8HQG 1.05s infinite;
-																	}
-																	.spinner_oXPr {
-																		animation-delay: 0.1s;
-																	}
-																	.spinner_ZTLf {
-																		animation-delay: 0.2s;
-																	}
-																	@keyframes spinner_8HQG {
-																		0%,
-																		57.14% {
-																			animation-timing-function: cubic-bezier(0.33, 0.66, 0.66, 1);
-																			transform: translate(0);
-																		}
-																		28.57% {
-																			animation-timing-function: cubic-bezier(0.33, 0, 0.66, 0.33);
-																			transform: translateY(-6px);
-																		}
-																		100% {
-																			transform: translate(0);
-																		}
-																	}
-																</style><circle
-																	class="spinner_qM83"
-																	cx="4"
-																	cy="12"
-																	r="2.5"
-																/><circle
-																	class="spinner_qM83 spinner_oXPr"
-																	cx="12"
-																	cy="12"
-																	r="2.5"
-																/><circle
-																	class="spinner_qM83 spinner_ZTLf"
-																	cx="20"
-																	cy="12"
-																	r="2.5"
-																/></svg
-															>
-														{/if}
-													</div>
-
-													<div class="flex flex-col justify-center -space-y-0.5">
-														<div class=" dark:text-gray-100 text-sm font-medium line-clamp-1">
-															{file.name}
-														</div>
-
-														<div class=" text-gray-500 text-sm">{$i18n.t('Document')}</div>
-													</div>
-												</div>
-											{:else if file.type === 'collection'}
-												<div
-													class="h-16 w-[15rem] flex items-center space-x-3 px-2.5 dark:bg-gray-600 rounded-xl border border-gray-200 dark:border-none"
-												>
-													<div class="p-2.5 bg-red-400 text-white rounded-lg">
+												<div class=" absolute -top-1 -right-1">
+													<button
+														class=" bg-gray-400 text-white border border-white rounded-full group-hover:visible invisible transition"
+														type="button"
+														on:click={() => {
+															files.splice(fileIdx, 1);
+															files = files;
+														}}
+													>
 														<svg
 															xmlns="http://www.w3.org/2000/svg"
-															viewBox="0 0 24 24"
+															viewBox="0 0 20 20"
 															fill="currentColor"
-															class="w-6 h-6"
+															class="w-4 h-4"
 														>
 															<path
-																d="M7.5 3.375c0-1.036.84-1.875 1.875-1.875h.375a3.75 3.75 0 0 1 3.75 3.75v1.875C13.5 8.161 14.34 9 15.375 9h1.875A3.75 3.75 0 0 1 21 12.75v3.375C21 17.16 20.16 18 19.125 18h-9.75A1.875 1.875 0 0 1 7.5 16.125V3.375Z"
-															/>
-															<path
-																d="M15 5.25a5.23 5.23 0 0 0-1.279-3.434 9.768 9.768 0 0 1 6.963 6.963A5.23 5.23 0 0 0 17.25 7.5h-1.875A.375.375 0 0 1 15 7.125V5.25ZM4.875 6H6v10.125A3.375 3.375 0 0 0 9.375 19.5H16.5v1.125c0 1.035-.84 1.875-1.875 1.875h-9.75A1.875 1.875 0 0 1 3 20.625V7.875C3 6.839 3.84 6 4.875 6Z"
+																d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
 															/>
 														</svg>
-													</div>
-
-													<div class="flex flex-col justify-center -space-y-0.5">
-														<div class=" dark:text-gray-100 text-sm font-medium line-clamp-1">
-															{file?.title ?? `#${file.name}`}
-														</div>
-
-														<div class=" text-gray-500 text-sm">{$i18n.t('Collection')}</div>
-													</div>
+													</button>
 												</div>
-											{/if}
-
-											<div class=" absolute -top-1 -right-1">
-												<button
-													class=" bg-gray-400 text-white border border-white rounded-full group-hover:visible invisible transition"
-													type="button"
-													on:click={() => {
-														files.splice(fileIdx, 1);
-														files = files;
-													}}
-												>
-													<svg
-														xmlns="http://www.w3.org/2000/svg"
-														viewBox="0 0 20 20"
-														fill="currentColor"
-														class="w-4 h-4"
-													>
-														<path
-															d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
-														/>
-													</svg>
-												</button>
 											</div>
-										</div>
+										{:else}
+											<FileItem
+												name={file.name}
+												type={file.type}
+												size={file?.size}
+												status={file.status}
+												dismissible={true}
+												on:dismiss={() => {
+													files.splice(fileIdx, 1);
+													files = files;
+												}}
+											/>
+										{/if}
 									{/each}
 								</div>
 							{/if}
@@ -695,6 +507,7 @@
 										<button
 											class="bg-gray-50 hover:bg-gray-100 text-gray-800 dark:bg-gray-850 dark:text-white dark:hover:bg-gray-800 transition rounded-full p-2 outline-none focus:outline-none"
 											type="button"
+											aria-label="More"
 										>
 											<svg
 												xmlns="http://www.w3.org/2000/svg"
@@ -740,6 +553,7 @@
 									}}
 									on:keydown={async (e) => {
 										const isCtrlPressed = e.ctrlKey || e.metaKey; // metaKey is for Cmd key on Mac
+										const commandsContainerElement = document.getElementById('commands-container');
 
 										// Check if Ctrl + R is pressed
 										if (prompt === '' && isCtrlPressed && e.key.toLowerCase() === 'r') {
@@ -770,10 +584,9 @@
 											editButton?.click();
 										}
 
-										if (['/', '#', '@'].includes(prompt.charAt(0)) && e.key === 'ArrowUp') {
+										if (commandsContainerElement && e.key === 'ArrowUp') {
 											e.preventDefault();
-
-											(promptsElement || documentsElement || modelsElement).selectUp();
+											commandsElement.selectUp();
 
 											const commandOptionButton = [
 												...document.getElementsByClassName('selected-command-option-button')
@@ -781,10 +594,9 @@
 											commandOptionButton.scrollIntoView({ block: 'center' });
 										}
 
-										if (['/', '#', '@'].includes(prompt.charAt(0)) && e.key === 'ArrowDown') {
+										if (commandsContainerElement && e.key === 'ArrowDown') {
 											e.preventDefault();
-
-											(promptsElement || documentsElement || modelsElement).selectDown();
+											commandsElement.selectDown();
 
 											const commandOptionButton = [
 												...document.getElementsByClassName('selected-command-option-button')
@@ -792,7 +604,7 @@
 											commandOptionButton.scrollIntoView({ block: 'center' });
 										}
 
-										if (['/', '#', '@'].includes(prompt.charAt(0)) && e.key === 'Enter') {
+										if (commandsContainerElement && e.key === 'Enter') {
 											e.preventDefault();
 
 											const commandOptionButton = [
@@ -808,7 +620,7 @@
 											}
 										}
 
-										if (['/', '#', '@'].includes(prompt.charAt(0)) && e.key === 'Tab') {
+										if (commandsContainerElement && e.key === 'Tab') {
 											e.preventDefault();
 
 											const commandOptionButton = [
@@ -844,16 +656,16 @@
 										}
 									}}
 									rows="1"
-									on:input={(e) => {
+									on:input={async (e) => {
 										e.target.style.height = '';
 										e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
 										user = null;
 									}}
-									on:focus={(e) => {
+									on:focus={async (e) => {
 										e.target.style.height = '';
 										e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
 									}}
-									on:paste={(e) => {
+									on:paste={async (e) => {
 										const clipboardData = e.clipboardData || window.clipboardData;
 
 										if (clipboardData && clipboardData.items) {
@@ -888,7 +700,7 @@
 												type="button"
 												on:click={async () => {
 													try {
-														const res = await navigator.mediaDevices
+														let stream = await navigator.mediaDevices
 															.getUserMedia({ audio: true })
 															.catch(function (err) {
 																toast.error(
@@ -902,13 +714,17 @@
 																return null;
 															});
 
-														if (res) {
+														if (stream) {
 															recording = true;
+															const tracks = stream.getTracks();
+															tracks.forEach((track) => track.stop());
 														}
+														stream = null;
 													} catch {
 														toast.error($i18n.t('Permission denied when accessing microphone'));
 													}
 												}}
+												aria-label="Voice Input"
 											>
 												<svg
 													xmlns="http://www.w3.org/2000/svg"
@@ -951,15 +767,24 @@
 													}
 													// check if user has access to getUserMedia
 													try {
-														await navigator.mediaDevices.getUserMedia({ audio: true });
+														let stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 														// If the user grants the permission, proceed to show the call overlay
 
+														if (stream) {
+															const tracks = stream.getTracks();
+															tracks.forEach((track) => track.stop());
+														}
+
+														stream = null;
+
 														showCallOverlay.set(true);
+														dispatch('call');
 													} catch (err) {
 														// If the user denies the permission or an error occurs, show an error message
 														toast.error($i18n.t('Permission denied when accessing media devices'));
 													}
 												}}
+												aria-label="Call"
 											>
 												<Headphone className="size-6" />
 											</button>

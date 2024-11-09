@@ -32,6 +32,11 @@ type ChunkConfigForm = {
 	chunk_overlap: number;
 };
 
+type ContentExtractConfigForm = {
+	engine: string;
+	tika_server_url: string | null;
+};
+
 type YoutubeConfigForm = {
 	language: string[];
 	translation?: string | null;
@@ -40,6 +45,7 @@ type YoutubeConfigForm = {
 type RAGConfigForm = {
 	pdf_extract_images?: boolean;
 	chunk?: ChunkConfigForm;
+	content_extraction?: ContentExtractConfigForm;
 	web_loader_ssl_verification?: boolean;
 	youtube?: YoutubeConfigForm;
 };
@@ -394,7 +400,7 @@ export const resetUploadDir = async (token: string) => {
 	let error = null;
 
 	const res = await fetch(`${RAG_API_BASE_URL}/reset/uploads`, {
-		method: 'GET',
+		method: 'POST',
 		headers: {
 			Accept: 'application/json',
 			authorization: `Bearer ${token}`
@@ -419,8 +425,8 @@ export const resetUploadDir = async (token: string) => {
 export const resetVectorDB = async (token: string) => {
 	let error = null;
 
-	const res = await fetch(`${RAG_API_BASE_URL}/reset`, {
-		method: 'GET',
+	const res = await fetch(`${RAG_API_BASE_URL}/reset/db`, {
+		method: 'POST',
 		headers: {
 			Accept: 'application/json',
 			authorization: `Bearer ${token}`
