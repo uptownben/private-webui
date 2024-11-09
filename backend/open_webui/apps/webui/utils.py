@@ -8,7 +8,6 @@ import tempfile
 
 from open_webui.apps.webui.models.functions import Functions
 from open_webui.apps.webui.models.tools import Tools
-from open_webui.config import FUNCTIONS_DIR, TOOLS_DIR
 
 
 def extract_frontmatter(content):
@@ -87,7 +86,7 @@ def load_toolkit_module_by_id(toolkit_id, content=None):
     # Create a temporary file and use it to define `__file__` so
     # that it works as expected from the module's perspective.
     temp_file = tempfile.NamedTemporaryFile(delete=False)
-
+    temp_file.close()
     try:
         with open(temp_file.name, "w", encoding="utf-8") as f:
             f.write(content)
@@ -131,6 +130,7 @@ def load_function_module_by_id(function_id, content=None):
     # Create a temporary file and use it to define `__file__` so
     # that it works as expected from the module's perspective.
     temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file.close()
     try:
         with open(temp_file.name, "w", encoding="utf-8") as f:
             f.write(content)

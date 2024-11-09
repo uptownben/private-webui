@@ -19,6 +19,8 @@
 
 	// Addons
 	let titleAutoGenerate = true;
+	let autoTags = true;
+
 	let responseAutoCopy = false;
 	let widescreenMode = false;
 	let splitLargeChunks = false;
@@ -28,24 +30,20 @@
 	// Interface
 	let defaultModelId = '';
 	let showUsername = false;
+	let richTextInput = true;
 
+	let landingPageMode = '';
 	let chatBubble = true;
 	let chatDirection: 'LTR' | 'RTL' = 'LTR';
+	let showUpdateToast = true;
 
 	let showEmojiInCall = false;
 	let voiceInterruption = false;
 	let hapticFeedback = false;
 
-	let streamResponse = true;
-
 	const toggleSplitLargeChunks = async () => {
 		splitLargeChunks = !splitLargeChunks;
 		saveSettings({ splitLargeChunks: splitLargeChunks });
-	};
-
-	const toggleStreamResponse = async () => {
-		streamResponse = !streamResponse;
-		saveSettings({ streamResponse: streamResponse });
 	};
 
 	const togglesScrollOnBranchChange = async () => {
@@ -53,7 +51,7 @@
 		saveSettings({ scrollOnBranchChange: scrollOnBranchChange });
 	};
 
-	const togglewidescreenMode = async () => {
+	const toggleWidescreenMode = async () => {
 		widescreenMode = !widescreenMode;
 		saveSettings({ widescreenMode: widescreenMode });
 	};
@@ -61,6 +59,16 @@
 	const toggleChatBubble = async () => {
 		chatBubble = !chatBubble;
 		saveSettings({ chatBubble: chatBubble });
+	};
+
+	const toggleLandingPageMode = async () => {
+		landingPageMode = landingPageMode === '' ? 'chat' : '';
+		saveSettings({ landingPageMode: landingPageMode });
+	};
+
+	const toggleShowUpdateToast = async () => {
+		showUpdateToast = !showUpdateToast;
+		saveSettings({ showUpdateToast: showUpdateToast });
 	};
 
 	const toggleShowUsername = async () => {
@@ -113,6 +121,16 @@
 		});
 	};
 
+	const toggleAutoTags = async () => {
+		autoTags = !autoTags;
+		saveSettings({ autoTags });
+	};
+
+	const toggleRichTextInput = async () => {
+		richTextInput = !richTextInput;
+		saveSettings({ richTextInput });
+	};
+
 	const toggleResponseAutoCopy = async () => {
 		const permission = await navigator.clipboard
 			.readText()
@@ -150,13 +168,18 @@
 
 	onMount(async () => {
 		titleAutoGenerate = $settings?.title?.auto ?? true;
+		autoTags = $settings.autoTags ?? true;
 
 		responseAutoCopy = $settings.responseAutoCopy ?? false;
+
 		showUsername = $settings.showUsername ?? false;
+		showUpdateToast = $settings.showUpdateToast ?? true;
 
 		showEmojiInCall = $settings.showEmojiInCall ?? false;
 		voiceInterruption = $settings.voiceInterruption ?? false;
 
+		richTextInput = $settings.richTextInput ?? true;
+		landingPageMode = $settings.landingPageMode ?? '';
 		chatBubble = $settings.chatBubble ?? true;
 		widescreenMode = $settings.widescreenMode ?? false;
 		splitLargeChunks = $settings.splitLargeChunks ?? false;
@@ -165,7 +188,6 @@
 		userLocation = $settings.userLocation ?? false;
 
 		hapticFeedback = $settings.hapticFeedback ?? false;
-		streamResponse = $settings?.streamResponse ?? true;
 
 		defaultModelId = $settings?.models?.at(0) ?? '';
 		if ($config?.default_models) {
@@ -239,6 +261,26 @@
 
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">{$i18n.t('Landing Page Mode')}</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							toggleLandingPageMode();
+						}}
+						type="button"
+					>
+						{#if landingPageMode === ''}
+							<span class="ml-2 self-center">{$i18n.t('Default')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Chat')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
 					<div class=" self-center text-xs">{$i18n.t('Chat Bubble UI')}</div>
 
 					<button
@@ -288,7 +330,7 @@
 					<button
 						class="p-1 px-3 text-xs flex rounded transition"
 						on:click={() => {
-							togglewidescreenMode();
+							toggleWidescreenMode();
 						}}
 						type="button"
 					>
@@ -319,27 +361,29 @@
 				</div>
 			</div>
 
-			<div>
-				<div class=" py-0.5 flex w-full justify-between">
-					<div class=" self-center text-xs">
-						{$i18n.t('Stream Chat Response')}
-					</div>
+			{#if $user.role === 'admin'}
+				<div>
+					<div class=" py-0.5 flex w-full justify-between">
+						<div class=" self-center text-xs">
+							{$i18n.t('Toast notifications for new updates')}
+						</div>
 
-					<button
-						class="p-1 px-3 text-xs flex rounded transition"
-						on:click={() => {
-							toggleStreamResponse();
-						}}
-						type="button"
-					>
-						{#if streamResponse === true}
-							<span class="ml-2 self-center">{$i18n.t('On')}</span>
-						{:else}
-							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
-						{/if}
-					</button>
+						<button
+							class="p-1 px-3 text-xs flex rounded transition"
+							on:click={() => {
+								toggleShowUpdateToast();
+							}}
+							type="button"
+						>
+							{#if showUpdateToast === true}
+								<span class="ml-2 self-center">{$i18n.t('On')}</span>
+							{:else}
+								<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+							{/if}
+						</button>
+					</div>
 				</div>
-			</div>
+			{/if}
 
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">
@@ -377,6 +421,28 @@
 						type="button"
 					>
 						{#if scrollOnBranchChange === true}
+							<span class="ml-2 self-center">{$i18n.t('On')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">
+						{$i18n.t('Rich Text Input for Chat')}
+					</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							toggleRichTextInput();
+						}}
+						type="button"
+					>
+						{#if richTextInput === true}
 							<span class="ml-2 self-center">{$i18n.t('On')}</span>
 						{:else}
 							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
@@ -426,6 +492,26 @@
 						type="button"
 					>
 						{#if titleAutoGenerate === true}
+							<span class="ml-2 self-center">{$i18n.t('On')}</span>
+						{:else}
+							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
+						{/if}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">{$i18n.t('Chat Tags Auto-Generation')}</div>
+
+					<button
+						class="p-1 px-3 text-xs flex rounded transition"
+						on:click={() => {
+							toggleAutoTags();
+						}}
+						type="button"
+					>
+						{#if autoTags === true}
 							<span class="ml-2 self-center">{$i18n.t('On')}</span>
 						{:else}
 							<span class="ml-2 self-center">{$i18n.t('Off')}</span>
@@ -542,7 +628,7 @@
 
 	<div class="flex justify-end text-sm font-medium">
 		<button
-			class=" px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-gray-100 transition rounded-lg"
+			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
 			type="submit"
 		>
 			{$i18n.t('Save')}
